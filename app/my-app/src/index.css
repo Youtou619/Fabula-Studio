@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: #fafafa;
+    --bg-dark: #0a0a0a;
+    --surface: #ffffff;
+    --surface-dark: #111111;
+    --border: #e5e5e5;
+    --border-dark: #1a1a1a;
+    --text: #171717;
+    --text-secondary: #737373;
+    --text-dark: #f5f5f5;
+    --text-dark-secondary: #a3a3a3;
+    --accent: #2563eb;
+    --accent-subtle: rgba(37, 99, 235, 0.08);
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--bg);
+    color: var(--text);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  body.dark {
+    background-color: var(--bg-dark);
+    color: var(--text-dark);
+  }
+
+  ::selection {
+    background-color: rgba(37, 99, 235, 0.15);
+  }
+}
+
+@layer components {
+  .fabula-editor p {
+    margin-bottom: 0.75rem;
+    line-height: 1.75;
+  }
+
+  .fabula-editor h1 {
+    font-size: 1.875rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    margin-top: 2rem;
+    letter-spacing: -0.025em;
+  }
+
+  .fabula-editor h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    margin-top: 1.5rem;
+    letter-spacing: -0.025em;
+  }
+
+  .fabula-editor blockquote {
+    border-left: 2px solid var(--border);
+    padding-left: 1rem;
+    font-style: italic;
+    color: var(--text-secondary);
+  }
+
+  .fabula-link {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s ease;
+    cursor: pointer;
+  }
+
+  .fabula-link:hover {
+    border-bottom-color: var(--accent);
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

@@ -1,16 +1,22 @@
-import { useState, useRef } from 'react';
-import { mockCharacters } from '../data/mockData';
-import type { Character } from '../data/mockData';
-import { Link2, Tag } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { useProjectData } from '../lib/useProjectData';
+import { chaptersService } from '../lib/services';
+import type { Character } from '../lib/database.types';
+import { Link2, Tag, Loader2 } from 'lucide-react';
 
 interface EditorProps {
   focusMode: boolean;
+  projectId: string;
 }
 
-export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
-  const [content, setContent] = useState(
-    `Aeliana s'approcha lentement du grand portail d'obsidienne. Le silence de la @Citadelle des Ombres n'était troublé que par le crépitement des torches éternelles.\n\nElle savait que @Kaelen Thorne l'attendait de l'autre côté, mais ce qui l'inquiétait davantage, c'était le message reçu de @Mira Soleil.\n\n« Les archives ne mentent jamais, » avait dit @Orion Vane. Mais Aeliana commençait à comprendre que la vérité pouvait être plus dangereuse que les mensonges.\n\nSon chemin la mènerait bientôt dans les tréfonds de l'@Undercity, là où les mécanismes anciens murmuraient encore les secrets d'un royaume oublié.`
-  );
+export const Editor = ({ focusMode, projectId }: EditorProps) => {
+  const { characters, loading: dataLoading } = useProjectData(projectId);
+  const [content, setContent] = useState('');
+  const [chapterId, setChapterId] = useState<string | null>(null);
+  const [chapterTitle, setChapterTitle] = useState('Chapitre 1');
+  const [chapterNumber, setChapterNumber] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionPosition, setMentionPosition] = useState({ top: 0, left: 0 });
@@ -20,8 +26,45 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
   const [cursorPosition, setCursorPosition] = useState(0);
   const editorRef = useRef<HTMLDivElement>(null);
   const mentionStartRef = useRef<number>(-1);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filteredCharacters = mockCharacters.filter(c => 
+  // Load chapter on mount
+  useEffect(() => {
+    const loadChapter = async () => {
+      try {
+        const chapters = await chaptersService.getAll(projectId);
+        if (chapters.length > 0) {
+          const ch = chapters[0];
+          setChapterId(ch.id);
+          setChapterTitle(ch.title);
+          setChapterNumber(ch.number);
+          setContent(ch.content || '');
+        } else {
+          // Create first chapter
+          const newChapter = await chaptersService.create({
+            project_id: projectId,
+            title: 'Chapitre 1',
+            number: 1,
+            content: '',
+            status: 'draft',
+            word_count: 0,
+            metadata: {},
+            character_ids: [],
+            summary: '',
+            event_ids: [],
+          });
+          setChapterId(newChapter.id);
+          setChapterTitle(newChapter.title);
+          setChapterNumber(newChapter.number);
+        }
+      } catch (error) {
+        console.error('Error loading chapter:', error);
+      }
+    };
+    loadChapter();
+  }, [projectId]);
+
+  const filteredCharacters = characters.filter(c => 
     c.name.toLowerCase().includes(mentionQuery.toLowerCase()) ||
     c.tags.some(tag => tag.toLowerCase().includes(mentionQuery.toLowerCase()))
   );
@@ -34,7 +77,7 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
 
     while ((match = mentionRegex.exec(text)) !== null) {
       const m = match;
-      const char = mockCharacters.find(c => 
+      const char = characters.find(c => 
         m[1].toLowerCase().includes(c.name.split(' ')[0].toLowerCase()) ||
         c.name.toLowerCase().includes(m[1].toLowerCase())
       );
@@ -76,9 +119,31 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
     return parts;
   };
 
+  const saveContent = async (newContent: string) => {
+    if (!chapterId) return;
+    
+    setIsSaving(true);
+    try {
+      const wordCount = newContent.trim().split(/\s+/).filter(w => w.length > 0).length;
+      await chaptersService.update(chapterId, {
+        content: newContent,
+        word_count: wordCount,
+      });
+      setLastSaved(new Date());
+    } catch (error) {
+      console.error('Error saving chapter:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     const text = e.currentTarget.innerText;
     setContent(text);
+
+    // Auto-save debounced
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => saveContent(text), 2000);
 
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -135,6 +200,10 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
         selection?.addRange(range);
       }
     }
+    
+    // Auto-save after mention
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => saveContent(newContent), 1000);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -156,29 +225,55 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
     }
   };
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
+
+  if (dataLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-fabula-accent" />
+      </div>
+    );
+  }
+
   return (
     <div className={`h-full flex flex-col transition-all duration-500 ${focusMode ? 'bg-fabula-bg dark:bg-fabula-bg-dark' : ''}`}>
-      {/* Header du manuscrit */}
+      {/* Header */}
       {!focusMode && (
         <div className="flex items-center justify-between px-8 py-4 border-b border-fabula-border dark:border-fabula-border-dark">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight">Les Archives d'Aether</h1>
-            <p className="text-xs text-fabula-text-secondary mt-0.5">Chapitre 3 — L'Ombre du Passé</p>
+            <h1 className="text-lg font-semibold tracking-tight">{chapterTitle}</h1>
+            <p className="text-xs text-fabula-text-secondary mt-0.5">Chapitre {chapterNumber}</p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-fabula-text-secondary">
-            <span>1,247 mots</span>
+          <div className="flex items-center gap-3 text-xs text-fabula-text-secondary">
+            <span>{content.trim().split(/\s+/).filter(w => w.length > 0).length} mots</span>
             <span>·</span>
-            <span>3 fiches liées</span>
+            <span className="flex items-center gap-1">
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Sauvegarde...
+                </>
+              ) : lastSaved ? (
+                <>Sauvegardé {lastSaved.toLocaleTimeString()}</>
+              ) : (
+                'Non sauvegardé'
+              )}
+            </span>
           </div>
         </div>
       )}
 
-      {/* Zone d'édition */}
+      {/* Editor */}
       <div className={`flex-1 overflow-y-auto scrollbar-hide ${focusMode ? 'flex items-center justify-center' : ''}`}>
         <div className={`relative ${focusMode ? 'max-w-2xl w-full px-8' : 'max-w-3xl mx-auto px-8 py-12'}`}>
           {!focusMode && (
             <div className="fabula-editor">
-              <h1>Les Archives d'Aether</h1>
+              <h1>{chapterTitle}</h1>
             </div>
           )}
           
@@ -255,7 +350,7 @@ export const Editor: React.FC<EditorProps> = ({ focusMode }) => {
             </div>
           </div>
           <p className="text-xs text-fabula-text-secondary mt-3 leading-relaxed line-clamp-3">
-            {hoveredMention.description}
+            {hoveredMention.description || 'Aucune description.'}
           </p>
           <div className="flex flex-wrap gap-1 mt-3">
             {hoveredMention.tags.slice(0, 3).map(tag => (

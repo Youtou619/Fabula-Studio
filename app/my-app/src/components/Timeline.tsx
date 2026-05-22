@@ -1,22 +1,46 @@
-import React, { useState } from 'react';
-import { mockEvents, mockCharacters } from '../data/mockData';
-import { Calendar, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { useProjectData } from '../lib/useProjectData';
+import { Calendar, ChevronRight, Loader2 } from 'lucide-react';
 
-export const Timeline: React.FC = () => {
+interface TimelineProps {
+  projectId: string;
+}
+
+export const Timeline = ({ projectId }: TimelineProps) => {
+  const { events, characters, loading } = useProjectData(projectId);
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 
-  const sortedEvents = [...mockEvents].sort((a, b) => a.chapter! - b.chapter!);
+  const sortedEvents = [...events].sort((a, b) => (a.chapter || 0) - (b.chapter || 0));
 
   const getEventCharacters = (characterIds: string[]) => {
-    return characterIds.map(id => mockCharacters.find(c => c.id === id)).filter(Boolean);
+    return characterIds.map(id => characters.find(c => c.id === id)).filter(Boolean);
   };
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-fabula-accent" />
+      </div>
+    );
+  }
+
+  if (events.length === 0) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-fabula-text-secondary text-sm">Aucun événement dans ce projet.</p>
+          <p className="text-xs text-fabula-text-secondary mt-1">Ajoutez des événements depuis l'Encyclopédie ou le Quick Add.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-8 py-5 border-b border-fabula-border dark:border-fabula-border-dark">
         <h1 className="text-lg font-semibold tracking-tight">Chronologie</h1>
-        <p className="text-xs text-fabula-text-secondary mt-0.5">{mockEvents.length} événements · An 847 à An 848</p>
+        <p className="text-xs text-fabula-text-secondary mt-0.5">{events.length} événements</p>
       </div>
 
       {/* Timeline Content */}
@@ -28,7 +52,7 @@ export const Timeline: React.FC = () => {
 
             <div className="space-y-12">
               {sortedEvents.map((event) => {
-                const characters = getEventCharacters(event.characterIds);
+                const eventChars = getEventCharacters(event.character_ids);
                 const isSelected = selectedEvent === event.id;
 
                 return (
@@ -63,13 +87,13 @@ export const Timeline: React.FC = () => {
                               w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold
                               ${isSelected ? 'bg-fabula-accent text-white' : 'bg-gray-100 dark:bg-fabula-bg-dark text-fabula-text-secondary'}
                             `}>
-                              {event.chapter}
+                              {event.chapter || '?'}
                             </div>
                             <div>
                               <h3 className="font-semibold text-sm group-hover:text-fabula-accent transition-colors">{event.title}</h3>
                               <div className="flex items-center gap-2 mt-1">
                                 <Calendar className="w-3 h-3 text-fabula-text-secondary" strokeWidth={1.5} />
-                                <span className="text-xs text-fabula-text-secondary">{event.date}</span>
+                                <span className="text-xs text-fabula-text-secondary">{event.date_label || 'Date inconnue'}</span>
                               </div>
                             </div>
                           </div>
@@ -85,29 +109,31 @@ export const Timeline: React.FC = () => {
                           ${isSelected ? 'max-h-96 opacity-100 mt-4' : 'max-h-0 opacity-0'}
                         `}>
                           <p className="text-sm text-fabula-text-secondary leading-relaxed">
-                            {event.description}
+                            {event.description || 'Aucune description.'}
                           </p>
 
                           {/* Personnages impliqués */}
-                          <div className="mt-4">
-                            <label className="text-xs font-medium text-fabula-text-secondary uppercase tracking-wider">Personnages impliqués</label>
-                            <div className="flex items-center gap-2 mt-2">
-                              {characters.map((char) => (
-                                <div
-                                  key={char!.id}
-                                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 dark:bg-fabula-bg-dark border border-fabula-border dark:border-fabula-border-dark"
-                                >
-                                  <div 
-                                    className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-medium"
-                                    style={{ backgroundColor: char!.color }}
+                          {eventChars.length > 0 && (
+                            <div className="mt-4">
+                              <label className="text-xs font-medium text-fabula-text-secondary uppercase tracking-wider">Personnages impliqués</label>
+                              <div className="flex items-center gap-2 mt-2">
+                                {eventChars.map((char) => (
+                                  <div
+                                    key={char!.id}
+                                    className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-50 dark:bg-fabula-bg-dark border border-fabula-border dark:border-fabula-border-dark"
                                   >
-                                    {char!.name.charAt(0)}
+                                    <div 
+                                      className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-medium"
+                                      style={{ backgroundColor: char!.color }}
+                                    >
+                                      {char!.name.charAt(0)}
+                                    </div>
+                                    <span className="text-xs font-medium">{char!.name}</span>
                                   </div>
-                                  <span className="text-xs font-medium">{char!.name}</span>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </div>

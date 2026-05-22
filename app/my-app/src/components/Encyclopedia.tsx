@@ -1,27 +1,34 @@
-import React, { useState } from 'react';
-import { mockCharacters, mockLocations } from '../data/mockData';
-import type { Character } from '../data/mockData';
-import { Search, Plus, Tag, MapPin, Users, LayoutGrid, List } from 'lucide-react';
+import { useState } from 'react';
+import { useProjectData } from '../lib/useProjectData';
+import type { Character } from '../lib/database.types';
+import { Search, Plus, Tag, MapPin, Users, LayoutGrid, List, Loader2 } from 'lucide-react';
+import { charactersService, locationsService } from '../lib/services';
 
-export const Encyclopedia: React.FC = () => {
+interface EncyclopediaProps {
+  projectId: string;
+}
+
+export const Encyclopedia = ({ projectId }: EncyclopediaProps) => {
+  const { characters, locations, loading, refresh } = useProjectData(projectId);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'characters' | 'locations'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   interface EncyclopediaItem {
     id: string;
     name: string;
     type: 'character' | 'location';
     color: string;
-    description?: string;
-    role?: string;
+    description?: string | null;
+    role?: string | null;
     tags?: string[];
   }
 
   const allItems: EncyclopediaItem[] = [
-    ...mockCharacters.map(c => ({ ...c, type: 'character' as const })),
-    ...mockLocations.map(l => ({ ...l, type: 'location' as const, role: l.type, color: '#6b7280' })),
+    ...characters.map(c => ({ ...c, type: 'character' as const })),
+    ...locations.map(l => ({ ...l, type: 'location' as const, role: l.type, color: '#6b7280' })),
   ];
 
   const filteredItems = allItems.filter(item => {
@@ -33,11 +40,59 @@ export const Encyclopedia: React.FC = () => {
     return matchesSearch && matchesTab;
   });
 
+  const handleCreateCharacter = async () => {
+    try {
+      await charactersService.create({
+        project_id: projectId,
+        name: 'Nouveau personnage',
+        role: 'Secondaire',
+        color: '#6b7280',
+        tags: [],
+        order_index: characters.length,
+        description: '',
+        avatar_url: null,
+        motivation: null,
+        secret: null,
+        metadata: {},
+      });
+      refresh();
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Error creating character:', error);
+    }
+  };
+
+  const handleCreateLocation = async () => {
+    try {
+      await locationsService.create({
+        project_id: projectId,
+        name: 'Nouveau lieu',
+        type: 'Lieu',
+        order_index: locations.length,
+        description: null,
+        metadata: {},
+        parent_id: null,
+      });
+      refresh();
+      setShowCreateModal(false);
+    } catch (error) {
+      console.error('Error creating location:', error);
+    }
+  };
+
   const tabs = [
     { id: 'all' as const, label: 'Tout', icon: LayoutGrid },
     { id: 'characters' as const, label: 'Personnages', icon: Users },
     { id: 'locations' as const, label: 'Lieux', icon: MapPin },
   ];
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-fabula-accent" />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -46,16 +101,18 @@ export const Encyclopedia: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Encyclopédie</h1>
-            <p className="text-xs text-fabula-text-secondary mt-0.5">{allItems.length} fiches · {mockCharacters.length} personnages · {mockLocations.length} lieux</p>
+            <p className="text-xs text-fabula-text-secondary mt-0.5">{allItems.length} fiches · {characters.length} personnages · {locations.length} lieux</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-fabula-accent text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-subtle">
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-fabula-accent text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-subtle"
+          >
             <Plus className="w-4 h-4" strokeWidth={1.5} />
             Nouvelle fiche
           </button>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Search */}
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-fabula-text-secondary" strokeWidth={1.5} />
             <input
@@ -67,7 +124,6 @@ export const Encyclopedia: React.FC = () => {
             />
           </div>
 
-          {/* Tabs */}
           <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 dark:bg-fabula-surface-dark">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -90,7 +146,6 @@ export const Encyclopedia: React.FC = () => {
             })}
           </div>
 
-          {/* View Toggle */}
           <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 dark:bg-fabula-surface-dark">
             <button
               onClick={() => setViewMode('grid')}
@@ -108,37 +163,34 @@ export const Encyclopedia: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid Content */}
+      {/* Content */}
       <div className="flex-1 overflow-y-auto p-8">
-        {viewMode === 'grid' ? (
+        {filteredItems.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-fabula-text-secondary text-sm">Aucune fiche trouvée.</p>
+            <p className="text-xs text-fabula-text-secondary mt-1">Créez votre première fiche !</p>
+          </div>
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {filteredItems.map((item) => (
               <div
                 key={item.id}
-                onClick={() => item.type === 'character' && setSelectedCharacter(item as Character)}
+                onClick={() => item.type === 'character' && setSelectedCharacter(characters.find(c => c.id === item.id) || null)}
                 className="group bg-white dark:bg-fabula-surface-dark rounded-2xl border border-fabula-border dark:border-fabula-border-dark p-5 hover:shadow-float dark:hover:shadow-float-dark hover:border-fabula-accent/20 transition-all duration-300 cursor-pointer"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div 
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0"
-                  style={{ backgroundColor: item.color }}
-                    >
-                      {item.name.charAt(0)}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm group-hover:text-fabula-accent transition-colors">{item.name}</h3>
-                      <p className="text-[10px] text-fabula-text-secondary uppercase tracking-wider font-medium mt-0.5">
-                        {item.role || item.type}
-                      </p>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0"
+                    style={{ backgroundColor: item.color }}
+                  >
+                    {item.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm group-hover:text-fabula-accent transition-colors">{item.name}</h3>
+                    <p className="text-[10px] text-fabula-text-secondary uppercase tracking-wider font-medium mt-0.5">{item.role || item.type}</p>
                   </div>
                 </div>
-                
-                <p className="text-xs text-fabula-text-secondary mt-3 leading-relaxed line-clamp-2">
-                  {item.description || ''}
-                </p>
-
+                <p className="text-xs text-fabula-text-secondary mt-3 leading-relaxed line-clamp-2">{item.description || ''}</p>
                 {item.tags && item.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-3">
                     {item.tags.slice(0, 2).map((tag: string) => (
@@ -161,7 +213,7 @@ export const Encyclopedia: React.FC = () => {
               >
                 <div 
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium flex-shrink-0"
-                  style={{ backgroundColor: 'color' in item ? item.color : '#6b7280' }}
+                  style={{ backgroundColor: item.color }}
                 >
                   {item.name.charAt(0)}
                 </div>
@@ -169,19 +221,42 @@ export const Encyclopedia: React.FC = () => {
                   <h3 className="font-medium text-sm">{item.name}</h3>
                   <p className="text-xs text-fabula-text-secondary">{item.role || item.type}</p>
                 </div>
-                <p className="text-xs text-fabula-text-secondary flex-1 truncate hidden md:block">
-                  {item.description || ''}
-                </p>
+                <p className="text-xs text-fabula-text-secondary flex-1 truncate hidden md:block">{item.description || ''}</p>
               </div>
             ))}
           </div>
         )}
       </div>
 
+      {/* Create Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+          <div className="w-full max-w-sm bg-white dark:bg-fabula-surface-dark rounded-2xl shadow-float dark:shadow-float-dark border border-fabula-border dark:border-fabula-border-dark p-6 m-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-4">Nouvelle fiche</h3>
+            <div className="space-y-2">
+              <button onClick={handleCreateCharacter} className="w-full flex items-center gap-3 p-4 rounded-xl border border-fabula-border dark:border-fabula-border-dark hover:shadow-subtle transition-all text-left">
+                <Users className="w-5 h-5 text-fabula-accent" strokeWidth={1.5} />
+                <div>
+                  <p className="font-medium text-sm">Personnage</p>
+                  <p className="text-xs text-fabula-text-secondary">Un personnage de votre histoire</p>
+                </div>
+              </button>
+              <button onClick={handleCreateLocation} className="w-full flex items-center gap-3 p-4 rounded-xl border border-fabula-border dark:border-fabula-border-dark hover:shadow-subtle transition-all text-left">
+                <MapPin className="w-5 h-5 text-fabula-accent" strokeWidth={1.5} />
+                <div>
+                  <p className="font-medium text-sm">Lieu</p>
+                  <p className="text-xs text-fabula-text-secondary">Un lieu ou un monde</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Detail Panel */}
       {selectedCharacter && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm" onClick={() => setSelectedCharacter(null)}>
-          <div className="w-full max-w-lg bg-white dark:bg-fabula-surface-dark rounded-2xl shadow-float dark:shadow-float-dark border border-fabula-border dark:border-fabula-border-dark p-8 m-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-white dark:bg-fabula-surface-dark rounded-2xl shadow-float dark:shadow-float-dark border border-fabula-border dark:border-fabula-border-dark p-8 m-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
                 <div 
@@ -201,7 +276,7 @@ export const Encyclopedia: React.FC = () => {
             <div className="space-y-5">
               <div>
                 <label className="text-xs font-medium text-fabula-text-secondary uppercase tracking-wider">Description</label>
-                <p className="text-sm mt-1.5 leading-relaxed">{selectedCharacter.description}</p>
+                <p className="text-sm mt-1.5 leading-relaxed">{selectedCharacter.description || 'Aucune description.'}</p>
               </div>
 
               {selectedCharacter.motivation && (
@@ -218,17 +293,19 @@ export const Encyclopedia: React.FC = () => {
                 </div>
               )}
 
-              <div>
-                <label className="text-xs font-medium text-fabula-text-secondary uppercase tracking-wider">Tags</label>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedCharacter.tags.map(tag => (
-                    <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fabula-accent-subtle text-fabula-accent text-xs font-medium">
-                      <Tag className="w-3 h-3" />
-                      {tag}
-                    </span>
-                  ))}
+              {selectedCharacter.tags && selectedCharacter.tags.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-fabula-text-secondary uppercase tracking-wider">Tags</label>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {selectedCharacter.tags.map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-fabula-accent-subtle text-fabula-accent text-xs font-medium">
+                        <Tag className="w-3 h-3" />
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
